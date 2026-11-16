@@ -11,6 +11,10 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{11396E70
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ArcadeLink.NotificationsFunction.Tests", "tests\ArcadeLink.NotificationsFunction.Tests\ArcadeLink.NotificationsFunction.Tests.csproj", "{803DE7D1-4584-478C-A42E-38CB7574818A}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ArcadeLink.NotificationsLambda", "src\ArcadeLink.NotificationsLambda\ArcadeLink.NotificationsLambda.csproj", "{417BC627-9B8A-4ACF-B7C3-F26406406DBF}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ArcadeLink.NotificationsLambda.Tests", "tests\ArcadeLink.NotificationsLambda.Tests\ArcadeLink.NotificationsLambda.Tests.csproj", "{FCBB35FF-3D8B-4824-A72D-CE94BA6D535C}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -28,9 +32,19 @@ Global
 		{803DE7D1-4584-478C-A42E-38CB7574818A}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{803DE7D1-4584-478C-A42E-38CB7574818A}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{803DE7D1-4584-478C-A42E-38CB7574818A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{417BC627-9B8A-4ACF-B7C3-F26406406DBF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{417BC627-9B8A-4ACF-B7C3-F26406406DBF}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{417BC627-9B8A-4ACF-B7C3-F26406406DBF}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{417BC627-9B8A-4ACF-B7C3-F26406406DBF}.Release|Any CPU.Build.0 = Release|Any CPU
+		{FCBB35FF-3D8B-4824-A72D-CE94BA6D535C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{FCBB35FF-3D8B-4824-A72D-CE94BA6D535C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{FCBB35FF-3D8B-4824-A72D-CE94BA6D535C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{FCBB35FF-3D8B-4824-A72D-CE94BA6D535C}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{F0A7BEF7-D54A-412B-B9D7-E61C89BE3D6B} = {64DCB915-B5CA-4E2F-9C40-3BDA09E55A19}
 		{803DE7D1-4584-478C-A42E-38CB7574818A} = {11396E70-091D-4FE4-9CAD-DA4C6C6B3058}
+		{417BC627-9B8A-4ACF-B7C3-F26406406DBF} = {64DCB915-B5CA-4E2F-9C40-3BDA09E55A19}
+		{FCBB35FF-3D8B-4824-A72D-CE94BA6D535C} = {11396E70-091D-4FE4-9CAD-DA4C6C6B3058}
 	EndGlobalSection
 EndGlobal

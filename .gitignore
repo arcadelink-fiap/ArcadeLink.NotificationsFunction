@@ -1,3 +1,10 @@
 bin/
 obj/
 local.settings.json
+publish/
+*.zip
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfplan

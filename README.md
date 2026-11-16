@@ -1,8 +1,54 @@
 # ArcadeLink.NotificationsFunction
 
-Azure Function (.NET 8, worker isolado) que substitui o `ArcadeLink.Notifications` (Web API da Fase
-2) — mesmo comportamento observável (log de boas-vindas no cadastro, log de confirmação de compra
-aprovada), agora acionado por trigger de mensageria em vez de um container sempre no ar.
+Notificações do ArcadeLink fora do caminho principal. O repositório tem **duas** implementações do mesmo
+comportamento observável (log de boas-vindas no cadastro, log de confirmação de compra aprovada):
+
+| Implementação | Fase | Status |
+|---|---|---|
+| `src/ArcadeLink.NotificationsLambda` + `terraform/` — **AWS Lambda** (.NET 8) acionada por SQS | 4 | **Opcional**: só existe se você ligar o transporte `AmazonSqs` |
+| `src/ArcadeLink.NotificationsFunction.Api` — **Azure Function** (worker isolado, trigger RabbitMQ) | 3 | **Histórico**: nunca foi implantada na nuvem; não faz parte do ambiente de produção |
+
+No caminho obrigatório da Fase 4 (RabbitMQ no cluster) **não há serviço de notificação em produção**: os eventos
+`UserCreated`/`PaymentProcessed` ficam sem assinante de notificação, e Catalog e Payments seguem consumindo
+normalmente. A Lambda abaixo é o caminho opcional para ter notificações.
+
+## Lambda + SQS/SNS (Fase 4, opcional)
+
+Fluxo: Users/Catalog/Payments publicam via MassTransit em **SNS** (`Messaging:Transport=AmazonSqs`) -> assinatura
+SNS com *raw delivery* -> fila **SQS** `arcadelink-notifications` (com **DLQ** após 3 tentativas) -> **Lambda**
+`arcadelink-notifications` (`dotnet8`, 256 MB, timeout 15 s), que processa o lote e reporta falhas parciais
+(`ReportBatchItemFailures`) — só as mensagens com erro voltam à fila. Os logs vão para o CloudWatch
+(retenção de 7 dias). A Lambda desembrulha o envelope do MassTransit (`Envelope/`) e usa os contratos em
+`Contracts/` (cópias dos eventos, como nos demais repos).
+
+Os tópicos SNS (`arcadelink-user-created`, `arcadelink-payment-processed`) são criados pela stack
+`ArcadeLink.Orchestration/terraform/env` com `enable_messaging=true`; esta stack só os referencia.
+
+```bash
+# 1) tópicos SNS + políticas das roles de pod (no Orchestration)
+terraform -chdir=../ArcadeLink.Orchestration/terraform/env apply -var enable_messaging=true
+
+# 2) publicar a Lambda (a partir desta pasta) — o archive_file compacta terraform/publish
+dotnet publish src/ArcadeLink.NotificationsLambda -c Release -r linux-x64 --self-contained false -o terraform/publish
+
+# 3) SQS + DLQ + assinaturas + Lambda
+cd terraform && terraform init && terraform apply
+
+# 4) no Orchestration: variável MESSAGING_TRANSPORT=AmazonSqs e rodar o workflow deploy-platform
+#    (cria o ConfigMap messaging-config, reinicia as APIs e remove o RabbitMQ do cluster)
+```
+
+Ver os logs: `aws logs tail $(terraform output -raw log_group_name) --follow --region us-east-2`
+(outputs: `queue_url`, `dlq_url`, `lambda_function_name`, `log_group_name`). Para voltar ao RabbitMQ:
+`MESSAGING_TRANSPORT=RabbitMq` + `deploy-platform`; depois `terraform destroy` aqui. O custo no volume da
+demo é ~zero, mas destrua junto com o ambiente.
+
+Testes: `dotnet test` (inclui `tests/ArcadeLink.NotificationsLambda.Tests`, sem precisar de AWS).
+
+## Azure Function (Fase 3 — histórico)
+
+Mantida como registro da Fase 3, quando o `ArcadeLink.Notifications` (Web API da Fase 2) foi substituído por uma
+Function acionada por trigger de mensageria. Não é implantada nem necessária na Fase 4.
 
 ## Como funciona
 
@@ -25,42 +71,14 @@ necessário porque o MassTransit serializa em camelCase. Um envelope malformado 
 desserialização retorna `default`/`null` em vez de lançar — as duas Functions tratam isso como um
 `LogWarning` e retornam sem processar, em vez de derrubar a execução.
 
-## Filas: por que precisam ser criadas manualmente
+## Execução local da Azure Function (apenas para estudo)
 
-Sem um consumer MassTransit rodando (como o antigo `ArcadeLink.Notifications`), nada mais cria
-automaticamente a topologia de filas no RabbitMQ. O script
-`../ArcadeLink.Orchestration/scripts/setup-function-queues.sh` declara as duas filas usadas aqui
-(`function-user-created-event`, `function-payment-processed-event`) e faz o bind delas aos exchanges
-que os publishers já usam (`ArcadeLink.Contracts:UserCreatedEvent`,
-`ArcadeLink.Contracts:PaymentProcessedEvent`) via a management API do RabbitMQ — rode-o uma vez
-contra o RabbitMQ (local ou do cluster) antes de testar esta Function.
-
-## Como rodar localmente
-
-Pré-requisitos: .NET 8 SDK, Azure Functions Core Tools v4 (`func --version`), RabbitMQ rodando.
-
-```bash
-bash ../ArcadeLink.Orchestration/scripts/setup-function-queues.sh
-cp src/ArcadeLink.NotificationsFunction.Api/local.settings.json.example src/ArcadeLink.NotificationsFunction.Api/local.settings.json
-cd src/ArcadeLink.NotificationsFunction.Api
-func start
-```
-
-`local.settings.json` é gitignored (evita commitar segredos locais por engano, mesmo sendo só
-placeholders de dev aqui) — por isso não vem versionado e precisa ser criado a partir do
-`local.settings.json.example` acima num clone limpo.
-
-**`func start` não foi validado de verdade** nas tasks anteriores. Ao scaffoldar este repositório,
-o Azure Functions Core Tools não estava disponível no ambiente dos subagentes (`func --version`
-retornou `command not found`, e a tentativa de instalar via `npm install -g
-azure-functions-core-tools@4` não completou a tempo por rede lenta/indisponível) — ver
-`../Temp/.claude/development_plans/sdd-fase3/task-4-report.md`. O scaffold foi feito manualmente
-como fallback, e tudo que pôde ser validado sem o `func` (`dotnet build`, `dotnet test`) passou sem
-erro, mas o comportamento real do host do Functions carregando o binding do RabbitMQ em runtime
-(fora do `dotnet build`) **não foi confirmado**. Rode `func start` manualmente para validar isso
-antes de considerar esta Function pronta para uma demonstração.
-
-`local.settings.json` já aponta `RabbitMqConnection` para `amqp://guest:guest@localhost:5672` (dev).
+Não há mais script de criação de filas (o auxiliar da Fase 3 foi removido do Orchestration). Para
+reproduzir o fluxo da Fase 3 é preciso declarar manualmente as filas `function-user-created-event` e
+`function-payment-processed-event` no RabbitMQ (bind nos exchanges `ArcadeLink.Contracts:UserCreatedEvent` e
+`ArcadeLink.Contracts:PaymentProcessedEvent`) e usar o Azure Functions Core Tools v4 com
+`local.settings.json` criado a partir do `local.settings.json.example` (gitignored; use credenciais próprias,
+não versione). O host real do Functions com o binding RabbitMQ nunca foi validado nesta entrega.
 
 ## Testes
 
@@ -68,11 +86,7 @@ antes de considerar esta Function pronta para uma demonstração.
 dotnet test
 ```
 
-`tests/ArcadeLink.NotificationsFunction.Tests` (xUnit, 5 testes): `WelcomeEmailFunctionTests` e
+`tests/ArcadeLink.NotificationsFunction.Tests` (xUnit): `WelcomeEmailFunctionTests` e
 `PurchaseConfirmationFunctionTests`, cobrindo o caminho de sucesso, o no-op em `Rejected` (só na
 confirmação de compra) e o envelope malformado — sem precisar de RabbitMQ real, já que as Functions
 recebem a mensagem já como `string` (o parâmetro do trigger) e são chamadas diretamente nos testes.
-
-## Deploy
-
-Só emulação local (`func start`), por decisão do usuário — sem deploy real no Azure.
